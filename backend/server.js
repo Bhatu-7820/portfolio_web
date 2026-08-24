@@ -1,5 +1,8 @@
-const dotenv = require('dotenv');
-dotenv.config();
+try {
+  require('dotenv').config();
+} catch (e) {
+  // In production environments (Render, Heroku, etc.), environment variables are injected directly by the platform
+}
 
 const app = require('./app');
 const connectDB = require('./config/db');
@@ -20,5 +23,4 @@ const server = app.listen(PORT, () => {
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error(`Unhandled Rejection Error: ${err.message}`);
-  // Keep server running in development or log stack
 });
