@@ -12,19 +12,20 @@ const connectDB = async () => {
 
   try {
     const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000
+      serverSelectionTimeoutMS: 3000,
+      connectTimeoutMS: 5000
     });
     console.log(`[EmailPro] MongoDB Connected: ${conn.connection.host}`);
     isConnecting = false;
   } catch (error) {
-    console.error(`[EmailPro Warning] MongoDB Connection Failed: ${error.message}`);
-    console.warn(`[EmailPro] Retrying MongoDB connection in 5 seconds...`);
+    console.error(`[EmailPro Warning] MongoDB Connection Error: ${error.message}`);
+    console.warn(`[EmailPro] Please set MONGODB_URI on Render or start local MongoDB on port 27017.`);
     isConnecting = false;
 
-    // Retry connection automatically without terminating the Express process
+    // Retry connection in background every 10 seconds without crashing Express
     setTimeout(() => {
       connectDB();
-    }, 5000);
+    }, 10000);
   }
 };
 
