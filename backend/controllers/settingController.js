@@ -1,22 +1,39 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const nodemailer = require('nodemailer');
+const memoryStore = require('../config/memoryStore');
 
 // @desc    Get user SMTP & sender settings
 // @route   GET /api/settings
 // @access  Private
 const getSettings = async (req, res, next) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const user = memoryStore.findUserById(req.user._id) || req.user;
+      return res.json({
+        success: true,
+        settings: {
+          senderName: user?.smtpConfig?.senderName || process.env.SENDER_NAME || 'Girase Bhatu (EmailPro)',
+          senderEmail: user?.smtpConfig?.senderEmail || process.env.SENDER_EMAIL || 'girasebhatu70@gmail.com',
+          smtpHost: user?.smtpConfig?.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com',
+          smtpPort: user?.smtpConfig?.smtpPort || process.env.SMTP_PORT || 587,
+          smtpUser: user?.smtpConfig?.smtpUser || process.env.SMTP_USER || 'girasebhatu70@gmail.com',
+          isPasswordSet: Boolean(user?.smtpConfig?.smtpPassword || process.env.SMTP_PASSWORD)
+        }
+      });
+    }
+
     const user = await User.findById(req.user._id);
 
     res.json({
       success: true,
       settings: {
-        senderName: user.smtpConfig?.senderName || process.env.SENDER_NAME || '',
-        senderEmail: user.smtpConfig?.senderEmail || process.env.SENDER_EMAIL || '',
-        smtpHost: user.smtpConfig?.smtpHost || process.env.SMTP_HOST || '',
-        smtpPort: user.smtpConfig?.smtpPort || process.env.SMTP_PORT || 587,
-        smtpUser: user.smtpConfig?.smtpUser || process.env.SMTP_USER || '',
-        isPasswordSet: Boolean(user.smtpConfig?.smtpPassword || process.env.SMTP_PASSWORD)
+        senderName: user?.smtpConfig?.senderName || process.env.SENDER_NAME || '',
+        senderEmail: user?.smtpConfig?.senderEmail || process.env.SENDER_EMAIL || '',
+        smtpHost: user?.smtpConfig?.smtpHost || process.env.SMTP_HOST || '',
+        smtpPort: user?.smtpConfig?.smtpPort || process.env.SMTP_PORT || 587,
+        smtpUser: user?.smtpConfig?.smtpUser || process.env.SMTP_USER || '',
+        isPasswordSet: Boolean(user?.smtpConfig?.smtpPassword || process.env.SMTP_PASSWORD)
       }
     });
   } catch (error) {
@@ -30,6 +47,33 @@ const getSettings = async (req, res, next) => {
 const updateSettings = async (req, res, next) => {
   try {
     const { senderName, senderEmail, smtpHost, smtpPort, smtpUser, smtpPassword } = req.body;
+
+    if (mongoose.connection.readyState !== 1) {
+      const user = memoryStore.findUserById(req.user._id);
+      if (user) {
+        user.smtpConfig = {
+          senderName: senderName || 'EmailPro Sender',
+          senderEmail: senderEmail || '',
+          smtpHost: smtpHost || '',
+          smtpPort: smtpPort ? Number(smtpPort) : 587,
+          smtpUser: smtpUser || '',
+          smtpPassword: smtpPassword || user.smtpConfig?.smtpPassword || ''
+        };
+        memoryStore.saveStore();
+      }
+      return res.json({
+        success: true,
+        message: 'Settings updated successfully',
+        settings: {
+          senderName: senderName || 'EmailPro Sender',
+          senderEmail: senderEmail || '',
+          smtpHost: smtpHost || '',
+          smtpPort: smtpPort ? Number(smtpPort) : 587,
+          smtpUser: smtpUser || '',
+          isPasswordSet: Boolean(smtpPassword)
+        }
+      });
+    }
 
     const user = await User.findById(req.user._id);
 

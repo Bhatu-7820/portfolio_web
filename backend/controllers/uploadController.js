@@ -1,8 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const csvParser = require('csv-parser');
+const mongoose = require('mongoose');
 const Lead = require('../models/Lead');
 const UploadedFile = require('../models/UploadedFile');
+const memoryStore = require('../config/memoryStore');
 
 // Helper function to validate email
 const isValidEmail = (email) => {
@@ -19,7 +21,7 @@ const uploadCSVLeads = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Please upload a CSV file' });
     }
 
-    const defaultType = req.body.defaultType || 'Business'; // e.g. BusinessEmails.csv or IndividualsEmails.csv
+    const defaultType = req.body.defaultType || 'Business';
     const filePath = req.file.path;
     const results = [];
     const rejectedRows = [];
@@ -33,7 +35,6 @@ const uploadCSVLeads = async (req, res, next) => {
       .pipe(csvParser())
       .on('data', (row) => {
         totalRows++;
-        // Support common CSV header formats
         const owner = row.name || row.owner || row['Contact Name'] || row['Full Name'] || row.Name || 'Unknown';
         const email = (row.email || row.Email || row['Email Address'] || '').trim().toLowerCase();
         const phone = row.phone || row.Phone || row['Phone Number'] || '';
@@ -59,7 +60,22 @@ const uploadCSVLeads = async (req, res, next) => {
       })
       .on('end', async () => {
         try {
-          // Process database imports & duplicate detection
+          if (mongoose.connection.readyState !== 1) {
+            const added = memoryStore.createBulkLeads(results, req.user._id);
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            return res.json({
+              success: true,
+              summary: {
+                totalRows,
+                validRows,
+                invalidRows,
+                duplicates: Math.max(0, results.length - added.length),
+                importedCount: added.length
+              },
+              rejectedRows
+            });
+          }
+
           for (const item of results) {
             const existing = await Lead.findOne({ user: req.user._id, email: item.email });
             if (existing) {
@@ -81,7 +97,6 @@ const uploadCSVLeads = async (req, res, next) => {
             }
           }
 
-          // Clean up temp file
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
           }
@@ -120,6 +135,22 @@ const uploadCatalogFile = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Please select a catalog file (PDF, DOC, DOCX)' });
     }
 
+    if (mongoose.connection.readyState !== 1) {
+      const store = memoryStore.getStore();
+      const newFile = {
+        _id: 'file_' + Date.now(),
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        path: req.file.path,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        uploadedBy: req.user._id
+      };
+      store.uploads.push(newFile);
+      memoryStore.saveStore();
+      return res.status(201).json({ success: true, message: 'Catalog uploaded successfully', file: newFile });
+    }
+
     const uploadedFile = await UploadedFile.create({
       filename: req.file.filename,
       originalName: req.file.originalname,
@@ -144,6 +175,11 @@ const uploadCatalogFile = async (req, res, next) => {
 // @access  Private
 const getUploadedFiles = async (req, res, next) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const store = memoryStore.getStore();
+      return res.json({ success: true, count: store.uploads.length, files: store.uploads });
+    }
+
     const files = await UploadedFile.find({ uploadedBy: req.user._id }).sort({ createdAt: -1 });
     res.json({ success: true, count: files.length, files });
   } catch (error) {
@@ -156,6 +192,13 @@ const getUploadedFiles = async (req, res, next) => {
 // @access  Private
 const deleteUploadedFile = async (req, res, next) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      const store = memoryStore.getStore();
+      store.uploads = store.uploads.filter(f => f._id !== req.params.id);
+      memoryStore.saveStore();
+      return res.json({ success: true, message: 'Catalog file deleted successfully' });
+    }
+
     const file = await UploadedFile.findOne({ _id: req.params.id, uploadedBy: req.user._id });
     if (!file) {
       return res.status(404).json({ success: false, message: 'File not found' });

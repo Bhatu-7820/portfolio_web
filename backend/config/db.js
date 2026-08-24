@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+// Disable command buffering so Mongoose never hangs for 10s when disconnected
+mongoose.set('bufferCommands', false);
+
 let isConnecting = false;
 
 const connectDB = async () => {
@@ -12,20 +15,20 @@ const connectDB = async () => {
 
   try {
     const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 3000,
-      connectTimeoutMS: 5000
+      serverSelectionTimeoutMS: 2000,
+      connectTimeoutMS: 3000
     });
     console.log(`[EmailPro] MongoDB Connected: ${conn.connection.host}`);
     isConnecting = false;
   } catch (error) {
     console.error(`[EmailPro Warning] MongoDB Connection Error: ${error.message}`);
-    console.warn(`[EmailPro] Please set MONGODB_URI on Render or start local MongoDB on port 27017.`);
+    console.warn(`[EmailPro] Operating in Standalone Memory Mode.`);
     isConnecting = false;
 
-    // Retry connection in background every 10 seconds without crashing Express
+    // Retry connection silently in background every 15 seconds
     setTimeout(() => {
       connectDB();
-    }, 10000);
+    }, 15000);
   }
 };
 
